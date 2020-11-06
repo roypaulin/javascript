@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style type="text/css" media="screen, print">
+      body {
+        margin: 30px 50px;
+        font-family: sans-serif;
+      }
+      .dead {
+        opacity: 0.25;
+      }
+      .alive {
+        opacity: 1;
+        fill-opacity: 0.01;
+        stroke: black;
+      }
+    </style>
+    <title>Titanic</title>
+  </head>
+  <body>
+    <h1>Titanic</h1>
+
+    <script src="../vendor/d3/d3.js"></script>
+    <!-- Create a div where the graph will take place -->
+    <div id="my_dataviz"></div>
+    <script>
+      // set the dimensions and margins of the graph
+      var margin = { top: 10, right: 30, bottom: 30, left: 60 },
+        width = 650 - margin.left - margin.right,
+        height = 500 - margin.top - margin.bottom;
+
+      // append the svg object to the body of the page
+      var svg = d3
+        .select("#my_dataviz")
+        .append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+      d3.tsv("../data/titanic.tsv", (d) => ({
+        name: d.name,
+        age: +d.age,
+        fare: +d.fare,
+        survived: d.survived,
+        sex: d.sex,
+      })).then(function (data) {
+        data = data.filter((d) => !isNaN(d.age) & !isNaN(d.fare));
+        // Add X axis
+        var x = d3
+          .scaleLinear()
+          .domain([0, d3.max(data.map((d) => d.age))])
+          .range([0, width]);
+
+        svg
+          .append("g")
+          .attr("transform", "translate(0," + height + ")")
+          .call(d3.axisBottom().scale(x));
+
+        // Add Y axis
+        var y = d3.scaleLog().domain([1, 1000]).range([height, 0]);
+        svg
+          .append("g")
+          .attr("transform", "translate(-10,0)")
+          .call(d3.axisLeft().scale(y));
+
+        // Add dots
+        svg
+          .append("g")
+          .selectAll("dot")
+          .data(data.filter((d) => d.sex === "female" && d.fare > 0.0))
+          .enter()
+          .append("circle")
+          .attr("cx", function (d) {
+            return x(d.age);
+          })
+          .attr("cy", function (d) {
+            return y(d.fare);
+          })
+          .attr("r", 2.8)
+          .style("fill", "#000000")
+          .attr("class", function (d) {
+            return d.survived == 1 ? "alive" : "dead";
+          })
+          .append("title")
+          .text((d) => d.name);
+
+        svg
+          .append("g")
+          .selectAll("dot")
+          .data(data.filter((d) => d.sex === "male" && d.fare > 0.0))
+          .enter()
+          .append("rect")
+          .attr("x", function (d) {
+            return x(d.age) - 2.5;
+          })
+          .attr("y", function (d) {
+            return y(d.fare) - 2.5;
+          })
+          .attr("width", 5)
+          .attr("height", 5)
+          .style("fill", "#000000")
+          .attr("class", function (d) {
+            return d.survived == 1 ? "alive" : "dead";
+          })
+          .append("title")
+          .text((d) => d.name);
+      });
+    </script>
+  </body>
+</html>
