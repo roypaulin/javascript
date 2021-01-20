@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<style type="text/css" media="screen, print">
+			body  { margin: 30px 50px; font-family: sans-serif; }
+			line, polyline, path { stroke: black; fill: none; }
+            .Maester { stroke: red; opacity: 1;
+        fill-opacity: 0.01;}
+			.Septon {stroke: blue; opacity: 1;
+        fill-opacity: 0.01;}
+			.Knight {stroke: indigo; opacity: 1;
+        fill-opacity: 0.01;}
+			.Magister {stroke: green; opacity: 1;
+        fill-opacity: 0.01;}
+		</style>
+		<title>CO2 Emissions cdf</title>
+	</head>
+	<body>
+		<h1>Number of missions - CO<sub>2</sub> Emissions</h1>
+
+		<script src="../vendor/d3/d3.js"></script>
+		<script>
+
+var parse_time = d3.timeParse("%Y-%m-%d");
+var format_percent = d3.format('.0%');
+
+var body = d3.select("body");
+var margin = {top: 100, right: 100, bottom: 100, left: 100},
+    width = 1000 - margin.left - margin.right,
+    height = 800 - margin.top - margin.bottom;
+
+var x = d3.scaleLinear()
+    .range([0, width])
+    .clamp(true);
+
+var y = d3.scaleLinear()
+    .range([height, 0])
+    .clamp(true);
+
+var svg = d3.select('body').append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+  .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+
+Promise.all([
+
+	d3.tsv("../data/missions.tsv", d => ({
+		mission_id: +d['#mission_id'],
+		user_id:    +d.user_id,
+		place_id:   +d.place_id,
+		date:        parse_time(d.date),
+		duration:   +d.duration,
+		mode:        d.mode,
+		co2:        +d.co2,
+	})),
+	d3.tsv("../data/users.tsv", d => ({
+		user_id:    +d['#user_id'],
+		name:        d.name,
+		house:       d.house,
+		institution: d.institution,
+		title:       d.title
+	})),
+	d3.tsv("../data/places.tsv", d => ({
+		place_id:  +d['#place_id'],
+		distance:  +d.distance,
+		country:    d.country,
+	})),
+	d3.tsv("../data/countries.tsv", d => ({
+		alpha:     d['#alpha2'],
+		country:   d.country,
+		continent: d.continent,
+	})),
+
+
+]).then(function(data) {
+
+	let missions  = data[0];
+	let users     = Object.fromEntries(data[1].map(u => [u.user_id, u]));
+	let places    = Object.fromEntries(data[2].map(p => [p.place_id, p]));
+	let countries = Object.fromEntries(data[3].map(c => [c.alpha, c]));
+	
+	// number of first users with respect to their number of missions
+	let nUsers = 50
+	// emission per user
+	
+	let emissions = Object.fromEntries(Object.keys(users).map(u_id => [u_id, {id:u_id, value:0}]));
+	for(let mission of missions) {
+		emissions[mission.user_id].value += mission.co2 * places[mission.place_id].distance / 1000; // tons of CO2
+		
+	}
+	emissions = Object.values(emissions);
+	
+
+
+	// #missions per user
+
+	let numMissions = Object.fromEntries(Object.keys(users).map(u_id => [u_id, {id:u_id, value:0}]));
+
+	for(let mission of missions) {
+		numMissions[mission.user_id].value += 1
+	
+	}
+	
+	numMissions = Object.values(numMissions);
+	users = Object.values(users)
+	
+	
+
+	// Add X axis
+	var x = d3
+          .scaleLinear()
+          .domain([0, d3.max(emissions.map(e => e.value))])
+		  .range([0, width]);
+		  
+		  svg
+          .append("g")
+          .attr("transform", "translate(0," + height + ")")
+		  .call(d3.axisBottom().scale(x));	
+		  
+	 // Add Y axis
+	 var y = d3.scaleLinear().domain([1, d3.max(numMissions.map(n=> n.value))]).range([height, 0]);
+	 svg
+          .append("g")
+          .attr("transform", "translate(-10,0)")
+          .call(d3.axisLeft().scale(y));
+	 
+	 
+
+	 var my_data = emissions.map(function (value, index){
+         return [value, numMissions[index]]
+         } );
+		
+		 my_data.sort((a,b) => a[1].value - b[1].value).reverse()
+		 my_data = my_data.slice(0,nUsers)
+		
+		
+    // given a user return his/her favorite transport mode + the total distance traveled
+	var getBestMode = function(id){
+		 
+		//filter missions completed by a specific user
+		let user_missions = missions.filter(m => m.user_id == id)
+
+		
+		modes = {'car':0, 'train': 0, 'plane': 0, 'public':0, 'other': 0}
+		// compute for each mode how many time it has been used by the user
+		for(m of user_missions){
+			
+			modes[m.mode] += 1
+		}
+		
+        let index, max = 0;
+		for(const [key, value] of Object.entries(modes)) {
+           if(value > max) {
+            max = value;
+            index = key;
+                  }
+		   }
+		   let tot = Object.values(modes).reduce((a,b) => a+b)
+		   let perc = modes[index]*100/tot
+		   perc = perc.toFixed(2)
+
+         // filter the destinations for a user
+		let user_places = user_missions.map(m => m.place_id)
+      
+		let distance = 0
+		// compute the total distance traveled by the user during his/her missions
+		for(let i of user_places){
+			distance += places[i].distance
+		}
+          return index + " "+perc + "%" + ", " + distance + "km"
+		        
+	}
+
+	 // Add dots
+	 svg
+          .append("g")
+          .selectAll("dot")
+          .data(my_data)
+          .enter()
+          .append("circle")
+          .attr("cx", function (d) {
+            return x(d[0].value);
+          })
+          .attr("cy", function (d) {
+            return y(d[1].value);
+          })
+          .attr("r", 2.8)
+          .style("fill", "#000000")
+          .attr("class", function (d) {
+            return users[d[0].id].title
+          })
+          .append("title")
+          .text((d) => users[d[0].id].name + "," + users[d[0].id].title + "," + getBestMode(d[0].id));
+	 
+		  
+
+		// Add the text label for the x axis
+		svg.append("text")
+        .attr("transform", "translate(" + (width / 2) + " ," + (height + margin.bottom - 40) + ")")
+        .style("text-anchor", "middle")
+        .text("tons of Co2");
+	  
+	  // text label for the y axis
+  svg.append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("y", 0 - margin.left)
+      .attr("x",0 - (height / 2))
+      .attr("dy", "1em")
+      .style("text-anchor", "middle")
+      .text("#missions");      
+		  
+	
+
+});
+		</script>
+	</body>
+</html>
